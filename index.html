@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SwipeTrainer Admin</title>
+
+  <!-- Supabase JS -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a0a;
+      --surface:   #141414;
+      --border:    #2a2a2a;
+      --green:     #10b981;
+      --blue:      #3b82f6;
+      --text:      #ffffff;
+      --muted:     #a0a0a0;
+      --error:     #ef4444;
+      --radius:    12px;
+      --gap:       20px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+    }
+
+    /* ── Auth gate ── */
+    #auth-gate {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .auth-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px 48px;
+      width: 100%;
+      max-width: 380px;
+      text-align: center;
+    }
+
+    .auth-logo {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--green);
+      margin-bottom: 6px;
+    }
+
+    .auth-subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .auth-box label {
+      display: block;
+      text-align: left;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .auth-box input[type="password"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 15px;
+      padding: 10px 14px;
+      outline: none;
+      margin-bottom: 16px;
+      transition: border-color 0.15s;
+    }
+
+    .auth-box input[type="password"]:focus {
+      border-color: var(--green);
+    }
+
+    .btn-primary {
+      width: 100%;
+      background: var(--green);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 11px 0;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+
+    .btn-primary:hover { opacity: 0.85; }
+
+    .auth-error {
+      color: var(--error);
+      font-size: 13px;
+      margin-top: 12px;
+      min-height: 18px;
+    }
+
+    /* ── Dashboard ── */
+    #dashboard { display: none; }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 var(--gap);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .header-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--green);
+      letter-spacing: -0.3px;
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    #refresh-btn {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    #refresh-btn:hover {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: var(--gap);
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 14px;
+    }
+
+    .section { margin-bottom: 32px; }
+
+    /* ── KPI Cards ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: var(--gap);
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 18px;
+      min-height: 90px;
+    }
+
+    .card-value {
+      font-size: 30px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.1;
+      margin-bottom: 6px;
+    }
+
+    .card-label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .card-value.loading-val {
+      color: var(--border);
+    }
+
+    /* ── Charts ── */
+    .chart-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--gap);
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+
+    .chart-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 220px;
+    }
+
+    /* ── Tables ── */
+    .table-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--gap);
+    }
+
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .table-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    thead th {
+      background: rgba(16, 185, 129, 0.08);
+      color: var(--green);
+      font-weight: 600;
+      text-align: left;
+      padding: 10px 14px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    tbody tr:nth-child(odd)  { background: #1c1c1c; }
+    tbody tr:nth-child(even) { background: var(--surface); }
+
+    tbody td {
+      padding: 9px 14px;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+
+    tbody td:first-child { color: var(--text); }
+
+    /* ── Loader / states ── */
+    .spinner-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      min-height: 60px;
+    }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .failed-msg {
+      color: var(--error);
+      font-size: 13px;
+      padding: 12px 0;
+      text-align: center;
+    }
+
+    .empty-msg {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 800px) {
+      .chart-row, .table-row { grid-template-columns: 1fr; }
+      .cards-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    @media (max-width: 480px) {
+      .cards-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ── Auth Gate ── -->
+  <div id="auth-gate">
+    <div class="auth-box">
+      <div class="auth-logo">SwipeTrainer</div>
+      <div class="auth-subtitle">Admin Dashboard</div>
+      <label for="pw-input">Password</label>
+      <input type="password" id="pw-input" placeholder="Enter password" autocomplete="current-password" />
+      <button class="btn-primary" id="pw-submit">Sign In</button>
+      <div class="auth-error" id="auth-error"></div>
+    </div>
+  </div>
+
+  <!-- ── Dashboard ── -->
+  <div id="dashboard">
+
+    <header>
+      <span class="header-title">SwipeTrainer Admin</span>
+      <div class="header-meta">
+        <span id="last-updated">—</span>
+        <button id="refresh-btn">Refresh</button>
+      </div>
+    </header>
+
+    <main>
+
+      <!-- Section 1: Summary KPIs -->
+      <section class="section">
+        <div class="section-title">Overview</div>
+        <div class="cards-grid" id="kpi-grid">
+          <!-- populated by JS -->
+          <div class="card"><div class="card-value loading-val">—</div><div class="card-label">Loading...</div></div>
+        </div>
+      </section>
+
+      <!-- Section 2: DAU + New Users -->
+      <section class="section">
+        <div class="section-title">Engagement</div>
+        <div class="chart-row">
+          <div class="chart-card">
+            <div class="chart-card-title">Daily Active Users</div>
+            <div class="chart-wrap" id="dau-wrap">
+              <div class="spinner-wrap"><div class="spinner"></div></div>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-card-title">New Users Per Day</div>
+            <div class="chart-wrap" id="new-users-wrap">
+              <div class="spinner-wrap"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 3: Swipes + Daily Challenge -->
+      <section class="section">
+        <div class="section-title">Activity</div>
+        <div class="chart-row">
+          <div class="chart-card">
+            <div class="chart-card-title">Swipes Per Day</div>
+            <div class="chart-wrap" id="swipes-wrap">
+              <div class="spinner-wrap"><div class="spinner"></div></div>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-card-title">Daily Challenge Participation</div>
+            <div class="chart-wrap" id="dc-wrap">
+              <div class="spinner-wrap"><div class="spinner"></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 4: Hardest / Easiest Setups -->
+      <section class="section">
+        <div class="section-title">Setup Difficulty</div>
+        <div class="table-row">
+          <div class="table-card">
+            <div class="table-card-title">Hardest Setups <span style="color:var(--muted);font-weight:400;font-size:12px;">(lowest accuracy)</span></div>
+            <div id="hardest-table-wrap"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+          </div>
+          <div class="table-card">
+            <div class="table-card-title">Easiest Setups <span style="color:var(--muted);font-weight:400;font-size:12px;">(highest accuracy)</span></div>
+            <div id="easiest-table-wrap"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Section 5: Pattern Breakdown + WAU -->
+      <section class="section">
+        <div class="section-title">Patterns &amp; Retention</div>
+        <div class="table-row">
+          <div class="table-card">
+            <div class="table-card-title">Pattern Type Breakdown</div>
+            <div id="pattern-table-wrap"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+          </div>
+          <div class="table-card">
+            <div class="table-card-title">Weekly Active Users</div>
+            <div id="wau-table-wrap"><div class="spinner-wrap"><div class="spinner"></div></div></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // ── Config ──────────────────────────────────────────────────────────────
+    const SUPABASE_URL  = 'https://dvsabmgibsahqklysubk.supabase.co';
+    const SUPABASE_KEY  = 'sb_publishable_bUI-kyblg4HvfD1uQl7KJA_99E4c7Hg';
+    const ADMIN_PASS    = 'swipe2026admin';
+    const SESSION_KEY   = 'st_admin_auth';
+
+    // Chart.js global defaults
+    Chart.defaults.color = '#a0a0a0';
+    Chart.defaults.borderColor = '#2a2a2a';
+    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+    // ── Auth ─────────────────────────────────────────────────────────────────
+    const authGate  = document.getElementById('auth-gate');
+    const dashboard = document.getElementById('dashboard');
+    const pwInput   = document.getElementById('pw-input');
+    const pwSubmit  = document.getElementById('pw-submit');
+    const authError = document.getElementById('auth-error');
+
+    function showDashboard() {
+      authGate.style.display  = 'none';
+      dashboard.style.display = 'block';
+      initDashboard();
+    }
+
+    // Check sessionStorage first
+    if (sessionStorage.getItem(SESSION_KEY) === '1') {
+      showDashboard();
+    }
+
+    function attemptLogin() {
+      if (pwInput.value === ADMIN_PASS) {
+        sessionStorage.setItem(SESSION_KEY, '1');
+        authError.textContent = '';
+        showDashboard();
+      } else {
+        authError.textContent = 'Incorrect password.';
+        pwInput.value = '';
+        pwInput.focus();
+      }
+    }
+
+    pwSubmit.addEventListener('click', attemptLogin);
+    pwInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') attemptLogin();
+    });
+
+    // ── Supabase client ───────────────────────────────────────────────────────
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    function fmtNum(n) {
+      if (n == null || n === '') return '—';
+      if (typeof n === 'number') {
+        if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+        if (n >= 1_000)     return (n / 1_000).toFixed(1) + 'k';
+        return n.toLocaleString();
+      }
+      return n;
+    }
+
+    function fmtDate(d) {
+      if (!d) return '—';
+      return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    function setEl(id, html) {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = html;
+    }
+
+    function failed(id) {
+      setEl(id, '<div class="failed-msg">Failed to load</div>');
+    }
+
+    function baseChartOptions(extra) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 400 },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1e1e1e',
+            borderColor: '#2a2a2a',
+            borderWidth: 1,
+            titleColor: '#ffffff',
+            bodyColor: '#a0a0a0',
+            padding: 10,
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#a0a0a0', maxTicksLimit: 8, maxRotation: 0 },
+          },
+          y: {
+            grid: { color: '#2a2a2a' },
+            ticks: { color: '#a0a0a0' },
+            beginAtZero: true,
+          },
+          ...(extra?.scales ?? {}),
+        },
+        ...(extra ?? {}),
+      };
+    }
+
+    function buildCanvas(wrapId) {
+      const wrap = document.getElementById(wrapId);
+      if (!wrap) return null;
+      wrap.innerHTML = '';
+      const canvas = document.createElement('canvas');
+      canvas.style.width  = '100%';
+      canvas.style.height = '100%';
+      wrap.appendChild(canvas);
+      return canvas;
+    }
+
+    function buildTable(cols, rows, emptyMsg) {
+      if (!rows || rows.length === 0) {
+        return `<div class="empty-msg">${emptyMsg || 'No data'}</div>`;
+      }
+      const thead = '<thead><tr>' +
+        cols.map(c => `<th>${c.label}</th>`).join('') +
+        '</tr></thead>';
+      const tbody = '<tbody>' +
+        rows.map(row =>
+          '<tr>' + cols.map(c => `<td>${row[c.key] ?? '—'}</td>`).join('') + '</tr>'
+        ).join('') +
+        '</tbody>';
+      return `<table>${thead}${tbody}</table>`;
+    }
+
+    // ── Last updated timestamp ────────────────────────────────────────────────
+    function updateTimestamp() {
+      const ts = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      document.getElementById('last-updated').textContent = 'Last updated: ' + ts;
+    }
+
+    // ── Section 1: KPI Cards ─────────────────────────────────────────────────
+    async function loadSummary() {
+      const grid = document.getElementById('kpi-grid');
+      try {
+        const { data, error } = await sb.from('admin_summary').select('*').single();
+        if (error) throw error;
+
+        const kpis = [
+          { label: "Today's DAU",         value: fmtNum(data.dau_today) },
+          { label: 'WAU (7d)',             value: fmtNum(data.wau) },
+          { label: 'MAU (30d)',            value: fmtNum(data.mau) },
+          { label: 'Total Users',          value: fmtNum(data.total_users) },
+          { label: 'Usernames Set',        value: fmtNum(data.total_usernames) },
+          { label: 'Total Swipes',         value: fmtNum(data.total_swipes) },
+          { label: "Today's Swipes",       value: fmtNum(data.swipes_today) },
+          { label: 'Daily Challenge Today',value: fmtNum(data.daily_challenge_today) },
+          { label: 'Overall Accuracy',     value: data.overall_accuracy != null ? data.overall_accuracy + '%' : '—' },
+        ];
+
+        grid.innerHTML = kpis.map(k =>
+          `<div class="card">
+            <div class="card-value">${k.value}</div>
+            <div class="card-label">${k.label}</div>
+          </div>`
+        ).join('');
+      } catch (err) {
+        console.error('loadSummary:', err);
+        grid.innerHTML = '<div class="failed-msg" style="grid-column:1/-1">Failed to load summary</div>';
+      }
+    }
+
+    // ── Section 2: DAU chart ─────────────────────────────────────────────────
+    async function loadDauChart() {
+      try {
+        const { data, error } = await sb
+          .from('admin_dau')
+          .select('date, dau')
+          .order('date', { ascending: true })
+          .limit(30);
+        if (error) throw error;
+
+        const canvas = buildCanvas('dau-wrap');
+        if (!canvas) return;
+        new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: data.map(r => fmtDate(r.date)),
+            datasets: [{
+              data: data.map(r => r.dau),
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16,185,129,0.08)',
+              borderWidth: 2,
+              pointRadius: 2,
+              pointHoverRadius: 5,
+              tension: 0.3,
+              fill: true,
+            }],
+          },
+          options: baseChartOptions(),
+        });
+      } catch (err) {
+        console.error('loadDauChart:', err);
+        failed('dau-wrap');
+      }
+    }
+
+    // ── Section 2: New Users chart ───────────────────────────────────────────
+    async function loadNewUsersChart() {
+      try {
+        const { data, error } = await sb
+          .from('admin_new_users')
+          .select('date, new_users')
+          .order('date', { ascending: true })
+          .limit(30);
+        if (error) throw error;
+
+        const canvas = buildCanvas('new-users-wrap');
+        if (!canvas) return;
+        new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: data.map(r => fmtDate(r.date)),
+            datasets: [{
+              label: 'New Users',
+              data: data.map(r => r.new_users),
+              borderColor: '#3b82f6',
+              backgroundColor: 'rgba(59,130,246,0.08)',
+              borderWidth: 2,
+              pointRadius: 2,
+              pointHoverRadius: 5,
+              tension: 0.3,
+              fill: true,
+            }],
+          },
+          options: baseChartOptions(),
+        });
+      } catch (err) {
+        console.error('loadNewUsersChart:', err);
+        failed('new-users-wrap');
+      }
+    }
+
+    // ── Section 3: Swipes chart (with accuracy overlay) ──────────────────────
+    async function loadSwipesChart() {
+      try {
+        const { data, error } = await sb
+          .from('admin_dau')
+          .select('date, swipes, accuracy_pct')
+          .order('date', { ascending: true })
+          .limit(30);
+        if (error) throw error;
+
+        const canvas = buildCanvas('swipes-wrap');
+        if (!canvas) return;
+        new Chart(canvas, {
+          type: 'line',
+          data: {
+            labels: data.map(r => fmtDate(r.date)),
+            datasets: [
+              {
+                label: 'Swipes',
+                data: data.map(r => r.swipes),
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16,185,129,0.08)',
+                borderWidth: 2,
+                pointRadius: 2,
+                pointHoverRadius: 5,
+                tension: 0.3,
+                fill: true,
+                yAxisID: 'y',
+              },
+              {
+                label: 'Accuracy %',
+                data: data.map(r => r.accuracy_pct),
+                borderColor: '#a0a0a0',
+                borderWidth: 1.5,
+                borderDash: [5, 4],
+                pointRadius: 0,
+                pointHoverRadius: 4,
+                tension: 0.3,
+                fill: false,
+                yAxisID: 'y2',
+              },
+            ],
+          },
+          options: {
+            ...baseChartOptions(),
+            plugins: {
+              ...baseChartOptions().plugins,
+              legend: { display: true, labels: { color: '#a0a0a0', boxWidth: 12, font: { size: 11 } } },
+            },
+            scales: {
+              x: {
+                grid: { color: '#2a2a2a' },
+                ticks: { color: '#a0a0a0', maxTicksLimit: 8, maxRotation: 0 },
+              },
+              y: {
+                grid: { color: '#2a2a2a' },
+                ticks: { color: '#a0a0a0' },
+                beginAtZero: true,
+                position: 'left',
+              },
+              y2: {
+                grid: { display: false },
+                ticks: { color: '#a0a0a0', callback: v => v + '%' },
+                beginAtZero: false,
+                min: 0,
+                max: 100,
+                position: 'right',
+              },
+            },
+          },
+        });
+      } catch (err) {
+        console.error('loadSwipesChart:', err);
+        failed('swipes-wrap');
+      }
+    }
+
+    // ── Section 3: Daily Challenge bar chart ─────────────────────────────────
+    async function loadDcChart() {
+      try {
+        const { data, error } = await sb
+          .from('admin_daily_challenge_stats')
+          .select('challenge_date, participants, avg_score')
+          .order('challenge_date', { ascending: true })
+          .limit(30);
+        if (error) throw error;
+
+        const canvas = buildCanvas('dc-wrap');
+        if (!canvas) return;
+        new Chart(canvas, {
+          type: 'bar',
+          data: {
+            labels: data.map(r => r.challenge_date),
+            datasets: [{
+              label: 'Participants',
+              data: data.map(r => r.participants),
+              backgroundColor: 'rgba(16,185,129,0.7)',
+              borderColor: '#10b981',
+              borderWidth: 1,
+              borderRadius: 4,
+            }],
+          },
+          options: {
+            ...baseChartOptions(),
+            plugins: {
+              ...baseChartOptions().plugins,
+              tooltip: {
+                ...baseChartOptions().plugins.tooltip,
+                callbacks: {
+                  afterBody: function (ctx) {
+                    const row = data[ctx[0].dataIndex];
+                    return row ? `Avg score: ${row.avg_score}/5` : '';
+                  },
+                },
+              },
+            },
+          },
+        });
+      } catch (err) {
+        console.error('loadDcChart:', err);
+        failed('dc-wrap');
+      }
+    }
+
+    // ── Section 4: Setup tables ───────────────────────────────────────────────
+    const setupCols = [
+      { label: 'Ticker',     key: 'ticker' },
+      { label: 'Difficulty', key: 'difficulty' },
+      { label: 'Pattern',    key: 'pattern_type' },
+      { label: 'Attempts',   key: 'total_attempts' },
+      { label: 'Accuracy',   key: 'accuracy_display' },
+    ];
+
+    function formatSetupRows(rows) {
+      return rows.map(r => ({ ...r, accuracy_display: r.accuracy_pct != null ? r.accuracy_pct + '%' : '—' }));
+    }
+
+    async function loadHardestSetups() {
+      try {
+        const { data, error } = await sb
+          .from('admin_setup_accuracy')
+          .select('ticker, difficulty, pattern_type, total_attempts, accuracy_pct')
+          .order('accuracy_pct', { ascending: true })
+          .limit(10);
+        if (error) throw error;
+        setEl('hardest-table-wrap', buildTable(setupCols, formatSetupRows(data), 'No data yet'));
+      } catch (err) {
+        console.error('loadHardestSetups:', err);
+        failed('hardest-table-wrap');
+      }
+    }
+
+    async function loadEasiestSetups() {
+      try {
+        const { data, error } = await sb
+          .from('admin_setup_accuracy')
+          .select('ticker, difficulty, pattern_type, total_attempts, accuracy_pct')
+          .order('accuracy_pct', { ascending: false })
+          .limit(10);
+        if (error) throw error;
+        setEl('easiest-table-wrap', buildTable(setupCols, formatSetupRows(data), 'No data yet'));
+      } catch (err) {
+        console.error('loadEasiestSetups:', err);
+        failed('easiest-table-wrap');
+      }
+    }
+
+    // ── Section 5: Pattern stats table ───────────────────────────────────────
+    async function loadPatternStats() {
+      try {
+        const { data, error } = await sb
+          .from('admin_pattern_stats')
+          .select('pattern_type, setups_count, total_attempts, accuracy_pct');
+        if (error) throw error;
+        const cols = [
+          { label: 'Pattern',  key: 'pattern_type' },
+          { label: 'Setups',   key: 'setups_count' },
+          { label: 'Attempts', key: 'total_attempts' },
+          { label: 'Accuracy', key: 'accuracy_display' },
+        ];
+        const rows = data.map(r => ({ ...r, accuracy_display: r.accuracy_pct != null ? r.accuracy_pct + '%' : '—' }));
+        setEl('pattern-table-wrap', buildTable(cols, rows, 'No data yet'));
+      } catch (err) {
+        console.error('loadPatternStats:', err);
+        failed('pattern-table-wrap');
+      }
+    }
+
+    // ── Section 5: WAU table ─────────────────────────────────────────────────
+    async function loadWauTable() {
+      try {
+        const { data, error } = await sb
+          .from('admin_wau')
+          .select('week_start, wau')
+          .order('week_start', { ascending: false });
+        if (error) throw error;
+        const cols = [
+          { label: 'Week of', key: 'week_display' },
+          { label: 'WAU',     key: 'wau' },
+        ];
+        const rows = data.map(r => ({ ...r, week_display: fmtDate(r.week_start) }));
+        setEl('wau-table-wrap', buildTable(cols, rows, 'No data yet'));
+      } catch (err) {
+        console.error('loadWauTable:', err);
+        failed('wau-table-wrap');
+      }
+    }
+
+    // ── Init & Refresh ────────────────────────────────────────────────────────
+    function initDashboard() {
+      loadAll();
+      document.getElementById('refresh-btn').addEventListener('click', loadAll);
+    }
+
+    function loadAll() {
+      updateTimestamp();
+
+      // Reset chart wraps to spinner before fetching
+      ['dau-wrap','new-users-wrap','swipes-wrap','dc-wrap'].forEach(id => {
+        setEl(id, '<div class="spinner-wrap"><div class="spinner"></div></div>');
+      });
+      ['hardest-table-wrap','easiest-table-wrap','pattern-table-wrap','wau-table-wrap'].forEach(id => {
+        setEl(id, '<div class="spinner-wrap"><div class="spinner"></div></div>');
+      });
+
+      // All sections load independently
+      loadSummary();
+      loadDauChart();
+      loadNewUsersChart();
+      loadSwipesChart();
+      loadDcChart();
+      loadHardestSetups();
+      loadEasiestSetups();
+      loadPatternStats();
+      loadWauTable();
+    }
+
+  })();
+  </script>
+
+</body>
+</html>
