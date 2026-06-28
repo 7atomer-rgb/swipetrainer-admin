@@ -189,6 +189,14 @@
       padding: 20px 18px;
       min-height: 90px;
     }
+    .card-clickable {
+      cursor: pointer;
+      transition: border-color .15s ease, transform .15s ease;
+    }
+    .card-clickable:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
 
     .card-value {
       font-size: 30px;
@@ -361,6 +369,17 @@
         <div class="cards-grid" id="kpi-grid">
           <!-- populated by JS -->
           <div class="card"><div class="card-value loading-val">‚Äî</div><div class="card-label">Loading...</div></div>
+        </div>
+      </section>
+
+      <!-- Section 1b: Per-user breakdown -->
+      <section class="section">
+        <div class="section-title">
+          Users
+          <span id="users-filter-note" style="color:var(--muted);font-weight:400;font-size:12px;"></span>
+        </div>
+        <div class="table-card">
+          <div id="users-table-wrap"><div class="spinner-wrap"><div class="spinner"></div></div></div>
         </div>
       </section>
 
@@ -585,28 +604,46 @@
         if (error) throw error;
 
         const kpis = [
-          { label: "Today's DAU",         value: fmtNum(data.dau_today) },
+          { label: "Today's DAU",         value: fmtNum(data.dau_today), filter: 'today' },
           { label: 'WAU (7d)',             value: fmtNum(data.wau) },
           { label: 'MAU (30d)',            value: fmtNum(data.mau) },
-          { label: 'Total Users',          value: fmtNum(data.total_users) },
+          { label: 'Total Users',          value: fmtNum(data.total_users), filter: 'all' },
           { label: 'Usernames Set',        value: fmtNum(data.total_usernames) },
           { label: 'Total Swipes',         value: fmtNum(data.total_swipes) },
           { label: "Today's Swipes",       value: fmtNum(data.swipes_today) },
           { label: 'Daily Challenge Today',value: fmtNum(data.daily_challenge_today) },
           { label: 'Overall Accuracy',     value: data.overall_accuracy != null ? data.overall_accuracy + '%' : '‚Äî' },
-          { label: 'Returning Users (2+ days)', value: fmtNum(data.returning_users) },
+          { label: 'Returning Users (2+ days)', value: fmtNum(data.returning_users), filter: 'returning' },
           { label: '% Returning',          value: data.pct_returning != null ? data.pct_returning + '%' : '‚Äî' },
           { label: 'Avg Swipes / User',    value: data.avg_swipes_per_user != null ? data.avg_swipes_per_user : '‚Äî' },
           { label: 'D1 Retention',         value: data.d1_retention_pct != null ? data.d1_retention_pct + '%' : '‚Äî' },
           { label: 'Week-1 Retention',     value: data.d7_retention_pct != null ? data.d7_retention_pct + '%' : '‚Äî' },
         ];
 
+        // Ads (optional ‚Äî only if the ad_events backend has been set up).
+        try {
+          const { data: ads } = await sb.from('admin_ads_summary').select('*').single();
+          if (ads) {
+            kpis.push({ label: 'Ads Today', value: fmtNum(ads.ads_today) });
+            kpis.push({ label: 'Ads (7d)', value: fmtNum(ads.ads_7d) });
+          }
+        } catch (e) { /* ads backend not set up yet ‚Äî skip */ }
+
         grid.innerHTML = kpis.map(k =>
-          `<div class="card">
+          `<div class="card${k.filter ? ' card-clickable' : ''}"${k.filter ? ` data-filter="${k.filter}"` : ''}>
             <div class="card-value">${k.value}</div>
-            <div class="card-label">${k.label}</div>
+            <div class="card-label">${k.label}${k.filter ? ' <span style="color:var(--accent);font-size:11px;">‚Üì</span>' : ''}</div>
           </div>`
         ).join('');
+
+        // Wire clickable cards to filter the Users table below.
+        grid.querySelectorAll('.card-clickable').forEach(card => {
+          card.addEventListener('click', () => {
+            applyUserFilter(card.getAttribute('data-filter'));
+            document.getElementById('users-table-wrap')
+              .scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
+        });
       } catch (err) {
         console.error('loadSummary:', err);
         grid.innerHTML = '<div class="failed-msg" style="grid-column:1/-1">Failed to load summary</div>';
@@ -892,6 +929,72 @@
       }
     }
 
+    // ‚îÄ‚îÄ Section 1b: Users table ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
+    let ALL_USERS = [];
+    const userCols = [
+      { label: 'User',      key: 'display' },
+      { label: 'Swipes',    key: 'total_swipes' },
+      { label: 'Accuracy',  key: 'acc_display' },
+      { label: 'Days',      key: 'active_days' },
+      { label: 'Sessions',  key: 'sessions' },
+      { label: 'Time',      key: 'time_display' },
+      { label: 'Last seen', key: 'last_display' },
+    ];
+
+    function fmtRelative(iso) {
+      if (!iso) return '‚Äî';
+      const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+      if (diff < 3600)  return Math.max(1, Math.floor(diff / 60)) + 'm ago';
+      if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+      return Math.floor(diff / 86400) + 'd ago';
+    }
+
+    function isToday(iso) {
+      if (!iso) return false;
+      const d = new Date(iso), n = new Date();
+      return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+    }
+
+    function decorateUsers(rows) {
+      return rows.map(r => ({
+        ...r,
+        acc_display:  r.accuracy_pct != null ? r.accuracy_pct + '%' : '‚Äî',
+        time_display: r.est_minutes != null ? Math.round(r.est_minutes) + 'm' : '‚Äî',
+        last_display: fmtRelative(r.last_seen),
+      }));
+    }
+
+    async function loadUsers() {
+      try {
+        const { data, error } = await sb
+          .from('admin_users')
+          .select('display, total_swipes, accuracy_pct, active_days, sessions, est_minutes, last_seen, first_seen');
+        if (error) throw error;
+        ALL_USERS = data || [];
+        applyUserFilter('all');
+      } catch (err) {
+        console.error('loadUsers:', err);
+        failed('users-table-wrap');
+      }
+    }
+
+    function applyUserFilter(filter) {
+      let rows = ALL_USERS.slice();
+      let note = '';
+      if (filter === 'today') {
+        rows = rows.filter(r => isToday(r.last_seen));
+        note = '‚Äî active today (click "Total Users" to reset)';
+      } else if (filter === 'returning') {
+        rows = rows.filter(r => r.active_days >= 2);
+        note = '‚Äî returning, 2+ days (click "Total Users" to reset)';
+      }
+      // Sort most-recent first (the view already does, but be safe).
+      rows.sort((a, b) => new Date(b.last_seen) - new Date(a.last_seen));
+      setEl('users-table-wrap', buildTable(userCols, decorateUsers(rows), 'No users in this view'));
+      const noteEl = document.getElementById('users-filter-note');
+      if (noteEl) noteEl.textContent = note;
+    }
+
     // ‚îÄ‚îÄ Init & Refresh ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ‚îÄ
     function initDashboard() {
       loadAll();
@@ -905,12 +1008,13 @@
       ['dau-wrap','new-users-wrap','swipes-wrap','dc-wrap'].forEach(id => {
         setEl(id, '<div class="spinner-wrap"><div class="spinner"></div></div>');
       });
-      ['hardest-table-wrap','easiest-table-wrap','pattern-table-wrap','wau-table-wrap'].forEach(id => {
+      ['hardest-table-wrap','easiest-table-wrap','pattern-table-wrap','wau-table-wrap','users-table-wrap'].forEach(id => {
         setEl(id, '<div class="spinner-wrap"><div class="spinner"></div></div>');
       });
 
       // All sections load independently
       loadSummary();
+      loadUsers();
       loadDauChart();
       loadNewUsersChart();
       loadSwipesChart();
